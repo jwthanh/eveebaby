@@ -1,0 +1,53 @@
+#!/bin/bash
+
+PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+SCREEN_NAME=eveeminer
+EVEE_PATH='/home/evee/eveebaby'
+POWER_THRESHOLD=50.0
+
+Logger() {
+        test -t 1 && echo "`date +%Y.%m.%d-%H:%M:%S` [@$host_name] [$$] $*"
+        test -z $log_file && \
+                log_file="${EVEE_PATH}/watchdog.log"
+        echo "`date +%Y.%m.%d-%H:%M:%S` [@$host_name] [$$] $*" >> $log_file
+}
+
+start_ethminer() {
+	Logger 'starting ethminer'
+	screen -dmSL $SCREEN_NAME bash -c  "sh ${EVEE_PATH}/letgo.sh"
+	Logger 'ethminer started'
+}
+
+gpus_count=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+#echo $gpus_count;
+
+i=0
+while [ $i -lt $gpus_count ]; do
+	power_draw=$(nvidia-smi --id=$i --query-gpu=power.draw --format=csv,noheader,nounits)
+	if [ 1 -eq "$(echo "${power_draw} < ${POWER_THRESHOLD}" | bc)" ];
+	then
+		if screen -list | grep -q "No Sockets found"; then
+			Logger "no screens available"
+  			start_ethminer
+			break
+		else
+  			Logger "screens available!"
+  			if screen -list | grep -q "${SCREEN_NAME}"; then
+    				Logger "${SCREEN_NAME} screen exists - restarting"
+    				screen -X -S $SCREEN_NAME quit  
+  			else
+    				Logger "${SCREEN_NAME} screen does NOT exist - creating now"
+  			fi
+  			start_ethminer
+  			Logger "Finished!"
+			break
+		fi
+	fi
+	i=$((i+1))
+	if [ 1 -eq "$(echo "${i} == ${gpus_count}" | bc)" ];
+        then
+        	Logger 'evee is working normal'
+        	nvidia-smi --query-gpu=index,timestamp,temperature.gpu,fan.speed,power.draw,clocks.gr,clocks.mem --format=csv,noheader
+        fi
+done
