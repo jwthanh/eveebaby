@@ -1,0 +1,2 @@
+# eveebaby
+Etherminer monitor watchdog
